@@ -10,7 +10,3 @@ agent = create_agent(
     system_prompt=MAIN_SYS_PROMPT,
     name="main-agent",
 )
-
-def run(query: str):
-    for chunk in agent.stream({"messages": [{"role": "user", "content": query}]}):
-        print(f"[Main Agent] Chunk: {chunk}")

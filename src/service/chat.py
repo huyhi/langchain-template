@@ -1,7 +1,7 @@
 import json
 from dataclasses import dataclass, field
 from typing import AsyncGenerator, Callable
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from loguru import logger
 from pydantic import BaseModel
@@ -160,8 +160,11 @@ _EVENT_HANDLERS: dict[str, Callable] = {
 
 
 async def stream_agent(
-    message: str, thread_id: UUID, message_id: str
+    message: str,
+    thread_id: UUID,
 ) -> AsyncGenerator[str, None]:
+    message_id = str(uuid4())
+
     state = _StreamState()
 
     yield _sse(StartChunk(message_id=message_id, thread_id=str(thread_id)))
@@ -189,14 +192,17 @@ async def stream_agent(
 # ── Thread helpers ────────────────────────────────────────────────────────────
 
 
-def get_or_create_thread(session: Session, thread_id: UUID) -> Thread:
+def get_or_create_thread(session: Session, thread_id: UUID) -> (Thread, bool):
+    isNew = False
+
     if thread_id:
         thread = repository.thread_get(session, thread_id)
         if not thread:
             thread = repository.thread_create(session)
     else:
         thread = repository.thread_create(session)
-    return thread
+        isNew = True
+    return thread, isNew
 
 
 async def generate_and_set_title(message: str, thread_id: UUID) -> None:

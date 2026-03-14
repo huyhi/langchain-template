@@ -28,3 +28,15 @@ def message_list_all(session: Session, thread_id: UUID) -> list[Message]:
         .order_by(Message.created_at)
     )
     return list(session.exec(statement).all())
+
+
+def message_list_latest(
+    session: Session, thread_id: UUID, limit: int = 20
+) -> list[Message]:
+    statement = (
+        select(Message)
+        .where(Message.thread_id == thread_id)
+        .order_by(Message.updated_at.desc())
+        .limit(limit)
+    )
+    return list(session.exec(statement).all())

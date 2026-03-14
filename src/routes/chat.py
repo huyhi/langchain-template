@@ -18,15 +18,17 @@ async def chat_streaming(
     background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
 ) -> StreamingResponse:
-    thread = get_or_create_thread(session, request.thread_id)
+    thread, isNew = get_or_create_thread(session, request.thread_id)
 
-    repository.message_create(session, thread.id, MessageRole.USER, request.message)
+    message = repository.message_create(
+        session, thread.id, MessageRole.USER, request.message
+    )
 
-    if not thread.title:
+    if isNew:
         background_tasks.add_task(generate_and_set_title, request.message, thread.id)
 
     return StreamingResponse(
-        stream_agent(request.message, thread.id, str(uuid4())),
+        stream_agent(request.message, thread.id, str(message.id)),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
