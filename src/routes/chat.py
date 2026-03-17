@@ -28,7 +28,7 @@ async def chat_streaming(
         background_tasks.add_task(generate_and_set_title, request.message, thread.id)
 
     return StreamingResponse(
-        stream_agent(request.message, thread.id, str(message.id)),
+        stream_agent(request.message, thread.id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

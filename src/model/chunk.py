@@ -97,6 +97,30 @@ class FinishChunk(_BaseChunk):
     finish_reason: str
 
 
+# ── Composer plan chunks ───────────────────────────────────────────────────────
+
+
+class PlanAvailableChunk(_BaseChunk):
+    """Emitted once the planner node finishes generating the composition plan."""
+
+    type: Literal["plan-available"] = "plan-available"
+    plan: Any
+
+
+class PlanStepStartChunk(_BaseChunk):
+    """Emitted when a plan execution step (lyrics / arrangement / melody / full_song) begins."""
+
+    type: Literal["plan-step-start"] = "plan-step-start"
+    step: str
+
+
+class PlanStepCompleteChunk(_BaseChunk):
+    """Emitted when a plan execution step finishes."""
+
+    type: Literal["plan-step-complete"] = "plan-step-complete"
+    step: str
+
+
 StreamChunk = Union[
     StartChunk,
     StartStepChunk,
@@ -109,4 +133,7 @@ StreamChunk = Union[
     ToolOutputAvailableChunk,
     FinishStepChunk,
     FinishChunk,
+    PlanAvailableChunk,
+    PlanStepStartChunk,
+    PlanStepCompleteChunk,
 ]

@@ -16,6 +16,9 @@ from model.chat import MessageRole
 from model.chunk import (
     FinishChunk,
     FinishStepChunk,
+    PlanAvailableChunk,
+    PlanStepCompleteChunk,
+    PlanStepStartChunk,
     StartChunk,
     StartStepChunk,
     TextDeltaChunk,
@@ -39,12 +42,24 @@ def _sse(chunk: BaseModel) -> str:
 
 
 @dataclass
+class _ToolCallRecord:
+    tool_call_id: str
+    tool_name: str
+    input: dict | str
+    output: str
+
+
+@dataclass
 class _StreamState:
     collected_texts: list[str] = field(default_factory=list)
     active_text_runs: set[str] = field(default_factory=set)
     active_tool_calls: dict[str, str] = field(
         default_factory=dict
     )  # tool_call_id -> tool_name
+    pending_tool_inputs: dict[str, dict] = field(
+        default_factory=dict
+    )  # tool_call_id -> {tool_name, input}
+    completed_tool_calls: list[_ToolCallRecord] = field(default_factory=list)
     finish_reason: str = "stop"
 
 
@@ -123,6 +138,9 @@ async def _on_tool_start(event: dict, state: _StreamState) -> AsyncGenerator[str
     tool_name = event["name"]
     input_data = event["data"].get("input", {})
 
+    # Record input so _on_tool_end can pair it with the output
+    state.pending_tool_inputs[tc_id] = {"tool_name": tool_name, "input": input_data}
+
     if tc_id not in state.active_tool_calls:
         input_str = (
             json.dumps(input_data) if isinstance(input_data, dict) else str(input_data)
@@ -143,8 +161,34 @@ async def _on_tool_end(event: dict, state: _StreamState) -> AsyncGenerator[str, 
     tc_id = metadata.get("tool_call_id", run_id)
     output = event["data"].get("output")
     output_content = output.content if hasattr(output, "content") else str(output)
+
+    # Pair with the previously recorded input and enqueue for DB write
+    pending = state.pending_tool_inputs.pop(tc_id, {})
+    state.completed_tool_calls.append(
+        _ToolCallRecord(
+            tool_call_id=tc_id,
+            tool_name=pending.get("tool_name", event.get("name", "")),
+            input=pending.get("input", {}),
+            output=output_content,
+        )
+    )
+
     yield _sse(ToolOutputAvailableChunk(tool_call_id=tc_id, output=output_content))
     yield _sse(FinishStepChunk())
+
+
+async def _on_custom_event(
+    event: dict, state: _StreamState
+) -> AsyncGenerator[str, None]:
+    name = event.get("name", "")
+    data = event.get("data", {})
+
+    if name == "composer.plan_available":
+        yield _sse(PlanAvailableChunk(plan=data.get("plan", {})))
+    elif name == "composer.step_start":
+        yield _sse(PlanStepStartChunk(step=data.get("step", "")))
+    elif name == "composer.step_complete":
+        yield _sse(PlanStepCompleteChunk(step=data.get("step", "")))
 
 
 _EVENT_HANDLERS: dict[str, Callable] = {
@@ -153,6 +197,7 @@ _EVENT_HANDLERS: dict[str, Callable] = {
     "on_chat_model_end": _on_chat_model_end,
     "on_tool_start": _on_tool_start,
     "on_tool_end": _on_tool_end,
+    "on_custom_event": _on_custom_event,
 }
 
 
@@ -178,11 +223,20 @@ async def stream_agent(
             async for chunk in handler(event, state):
                 yield chunk
 
-    full_response = "".join(state.collected_texts)
-    if full_response:
-        with Session(engine) as session:
+    with Session(engine) as session:
+        if full_response := "".join(state.collected_texts):
             repository.message_create(
                 session, thread_id, MessageRole.ASSISTANT, full_response
+            )
+
+        for tc in state.completed_tool_calls:
+            repository.tool_call_create(
+                session,
+                thread_id=thread_id,
+                tool_call_id=tc.tool_call_id,
+                tool_name=tc.tool_name,
+                input=tc.input,
+                output=tc.output,
             )
 
     yield _sse(FinishChunk(finish_reason=state.finish_reason))
