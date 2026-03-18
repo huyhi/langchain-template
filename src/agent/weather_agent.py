@@ -14,7 +14,7 @@ weather_agent = create_agent(
 )
 
 
-@tool("weather", description="Get the weather for a given city")
+@tool("weather", description="Get the weather for a given city", return_direct=True)
 async def weather_agent_facade(query: str, config: RunnableConfig) -> str:
     """Invoke the weather sub-agent and return its final answer."""
 

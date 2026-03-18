@@ -112,6 +112,8 @@ class PlanStepStartChunk(_BaseChunk):
 
     type: Literal["plan-step-start"] = "plan-step-start"
     step: str
+    detail: str = ""
+    index: int = 0
 
 
 class PlanStepCompleteChunk(_BaseChunk):
@@ -119,6 +121,19 @@ class PlanStepCompleteChunk(_BaseChunk):
 
     type: Literal["plan-step-complete"] = "plan-step-complete"
     step: str
+    index: int = 0
+
+
+# ── Search-songs chunks ────────────────────────────────────────────────────────
+
+
+class SongSearchResultsChunk(_BaseChunk):
+    """Emitted when the vector-DB search returns structured song results."""
+
+    type: Literal["song-search-results"] = "song-search-results"
+    query: str
+    results: list[Any]
+    total: int
 
 
 StreamChunk = Union[
@@ -136,4 +151,5 @@ StreamChunk = Union[
     PlanAvailableChunk,
     PlanStepStartChunk,
     PlanStepCompleteChunk,
+    SongSearchResultsChunk,
 ]

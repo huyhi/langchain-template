@@ -19,6 +19,7 @@ from model.chunk import (
     PlanAvailableChunk,
     PlanStepCompleteChunk,
     PlanStepStartChunk,
+    SongSearchResultsChunk,
     StartChunk,
     StartStepChunk,
     TextDeltaChunk,
@@ -186,9 +187,24 @@ async def _on_custom_event(
     if name == "composer.plan_available":
         yield _sse(PlanAvailableChunk(plan=data.get("plan", {})))
     elif name == "composer.step_start":
-        yield _sse(PlanStepStartChunk(step=data.get("step", "")))
+        yield _sse(PlanStepStartChunk(
+            step=data.get("step", ""),
+            detail=data.get("detail", ""),
+            index=data.get("index", 0),
+        ))
     elif name == "composer.step_complete":
-        yield _sse(PlanStepCompleteChunk(step=data.get("step", "")))
+        yield _sse(PlanStepCompleteChunk(
+            step=data.get("step", ""),
+            index=data.get("index", 0),
+        ))
+    elif name == "search_songs.results_available":
+        yield _sse(
+            SongSearchResultsChunk(
+                query=data.get("query", ""),
+                results=data.get("results", []),
+                total=data.get("total", 0),
+            )
+        )
 
 
 _EVENT_HANDLERS: dict[str, Callable] = {
@@ -224,7 +240,10 @@ async def stream_agent(
                 yield chunk
 
     with Session(engine) as session:
-        if full_response := "".join(state.collected_texts):
+        full_response = "".join(state.collected_texts)
+        if not full_response and state.completed_tool_calls:
+            full_response = state.completed_tool_calls[-1].output
+        if full_response:
             repository.message_create(
                 session, thread_id, MessageRole.ASSISTANT, full_response
             )
